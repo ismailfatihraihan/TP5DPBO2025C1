@@ -5,7 +5,10 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
+import java.sql.*;
 
 public class Menu extends JFrame{
     public static void main(String[] args) {
@@ -31,6 +34,8 @@ public class Menu extends JFrame{
     // list untuk menampung semua mahasiswa
     private ArrayList<Mahasiswa> listMahasiswa;
 
+    private Database database;
+
     private JPanel mainPanel;
     private JTextField nimField;
     private JTextField namaField;
@@ -52,7 +57,7 @@ public class Menu extends JFrame{
         listMahasiswa = new ArrayList<>();
 
         // Isi listMahasiswa
-        populateList();
+        database = new Database();
 
         // Isi tabel mahasiswa
         mahasiswaTable.setModel(setTable());
@@ -135,16 +140,22 @@ public class Menu extends JFrame{
         // Buat objek tabel dengan kolom yang sudah dibuat
         DefaultTableModel temp = new DefaultTableModel(null, column);
 
-        // Isi tabel dengan listMahasiswa
-        for (int i = 0; i < listMahasiswa.size(); i++) {
-            Object[] row = new Object[5]; // Tambah satu elemen untuk jurusan
-            row[0] = i + 1; // No urut
-            row[1] = listMahasiswa.get(i).getNim();
-            row[2] = listMahasiswa.get(i).getNama();
-            row[3] = listMahasiswa.get(i).getJenisKelamin();
-            row[4] = listMahasiswa.get(i).getJurusan(); // Tambahkan kolom Jurusan
-
-            temp.addRow(row);
+        try {
+            ResultSet resultSet = database.selectQuery("SELECT * FROM mahasiswa");
+            int i = 0;
+            while (resultSet.next()){
+                Object[] row = new Object[5]; // Tambah satu elemen untuk jurusan
+                row[0] = i + 1; // No urut
+                row[1] = resultSet.getString("nim");
+                row[2] = resultSet.getString("nama");
+                row[3] = resultSet.getString("jenis_kelamin");
+                row[4] = resultSet.getString("jurusan");
+                
+                temp.addRow(row);
+                i++;
+            }
+        } catch (SQLException e){
+            throw new RuntimeException(e);
         }
 
         return temp;
@@ -153,8 +164,8 @@ public class Menu extends JFrame{
 
     public void insertData() {
         // Ambil value dari textfield dan combobox
-        String nim = nimField.getText().trim();
-        String nama = namaField.getText().trim();
+        String nim = nimField.getText();
+        String nama = namaField.getText();
         String jenisKelamin = jenisKelaminComboBox.getSelectedItem().toString();
         String jurusan = jurusanComboBox.getSelectedItem().toString(); // Ambil jurusan dari ComboBox
 
@@ -164,18 +175,28 @@ public class Menu extends JFrame{
             return; // Hentikan proses jika ada field kosong
         }
 
-        // Tambahkan data ke dalam list
-        listMahasiswa.add(new Mahasiswa(nim, nama, jenisKelamin, jurusan)); // Sesuaikan dengan konstruktor baru
+        // Query INSERT dengan VALUES langsung (karena masih pakai Statement biasa)
+        String sql = "INSERT INTO mahasiswa (nim, nama, jenis_kelamin, jurusan) VALUES ('" + nim + "', '" + nama + "', '" + jenisKelamin + "', '" + jurusan + "')";
 
-        // Update tabel
-        mahasiswaTable.setModel(setTable());
+        try {
+            database.insertUpdateDeleteQuery(sql);
 
-        // Bersihkan form
-        clearForm();
+            // Update tabel
+            mahasiswaTable.setModel(setTable());
 
-        // Feedback
-        System.out.println("Insert berhasil");
-        JOptionPane.showMessageDialog(null, "Data berhasil ditambahkan");
+            // Bersihkan form
+            clearForm();
+
+            // Feedback sukses
+            JOptionPane.showMessageDialog(null, "Data berhasil ditambahkan");
+
+        } catch (RuntimeException e) {
+            if (e.getCause() instanceof SQLIntegrityConstraintViolationException) {
+                JOptionPane.showMessageDialog(null, "⚠️ ERROR: NIM sudah terdaftar! Gunakan NIM lain.", "Kesalahan", JOptionPane.ERROR_MESSAGE);
+            } else {
+                JOptionPane.showMessageDialog(null, "Terjadi kesalahan saat menyimpan data: " + e.getMessage(), "Kesalahan", JOptionPane.ERROR_MESSAGE);
+            }
+        }
     }
 
 
@@ -192,20 +213,12 @@ public class Menu extends JFrame{
             return; // Hentikan proses jika ada field kosong
         }
 
-        // Ubah data mahasiswa di list
-        listMahasiswa.get(selectedIndex).setNim(nim);
-        listMahasiswa.get(selectedIndex).setNama(nama);
-        listMahasiswa.get(selectedIndex).setJenisKelamin(jenisKelamin);
-        listMahasiswa.get(selectedIndex).setJurusan(jurusan); // Perbarui jurusan
+        String sql = "UPDATE mahasiswa SET nama='" + nama + "', jenis_kelamin='" + jenisKelamin + "', jurusan='" + jurusan + "' WHERE nim='" + nim + "';";
+        database.insertUpdateDeleteQuery(sql);
 
-        // Update tabel
         mahasiswaTable.setModel(setTable());
-
-        // Bersihkan form
         clearForm();
 
-        // Feedback
-        System.out.println("Update Berhasil!");
         JOptionPane.showMessageDialog(null, "Data berhasil diubah");
     }
 
@@ -223,17 +236,13 @@ public class Menu extends JFrame{
 
                 // Jika pengguna memilih "Yes", hapus data
                 if (confirm == JOptionPane.YES_OPTION) {
-                    // Hapus data dari list
-                    listMahasiswa.remove(selectedIndex);
+                    String nim = mahasiswaTable.getValueAt(selectedIndex, 1).toString();
+                    String sql = "DELETE FROM mahasiswa WHERE nim='" + nim + "';";
+                    database.insertUpdateDeleteQuery(sql);
 
-                    // Update tabel setelah penghapusan
                     mahasiswaTable.setModel(setTable());
-
-                    // Bersihkan form input
                     clearForm();
 
-                    // Feedback
-                    System.out.println("Delete Berhasil!");
                     JOptionPane.showMessageDialog(null, "Data berhasil dihapus");
                 }
             } else {
